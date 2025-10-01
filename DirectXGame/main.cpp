@@ -1064,8 +1064,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	*/
 
 	//モデル読み込み
-	ModelData modelData = LoadObjFile("resources", "plane.obj");
+	//ModelData modelData = LoadObjFile("resources", "plane.obj");
+	
 	//ModelData modelData = LoadObjFile("resources", "axis.obj");
+
+	ModelData modelData = LoadObjFile("resources", "fence.obj");
+	
 
 	// 頂点リソースを作る
 	ID3D12Resource* vertexResource = CreateBufferResource(device, sizeof(VertexData) * modelData.vertices.size());
@@ -1112,7 +1116,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 	Transform transform{ {1.0f,1.0f,1.0f},{0.0f,0.0f,0.0f}, {0.0f,0.0f,0.0f} };
 
-	Transform cameraTransform{ {1.0f,1.0f,1.0f}, {0.0f,0.0f,0.0f},{0.0f,0.0f,-5.0f} };
+	Transform cameraTransform{ {1.0f,1.0f,1.0f}, {0.0f,0.0f,0.0f},{0.0f,1.0f,-10.0f} };
 
 	Matrix4x4 projectionMatrix = MakePerspectiveFovMatrix(0.45f, float(kClientWidth) / float(kClientHeight), 0.1f, 100.0f);
 
