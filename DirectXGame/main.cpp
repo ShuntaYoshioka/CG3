@@ -7,6 +7,7 @@
 #include <cassert>
 #include <dxgidebug.h>
 #include <dxcapi.h>
+#include <random>
 #include "externals/imgui/imgui.h"
 #include "externals/imgui/imgui_impl_dx12.h"
 #include "externals/imgui/imgui_impl_win32.h"
@@ -23,6 +24,11 @@
 #pragma comment(lib,"dxcompiler.lib")
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+std::random_device seedGenerator;
+std::mt19937 randomEngine(seedGenerator());
+
+
 
 struct Matrix4x4 {
 	float m[4][4];
@@ -69,7 +75,45 @@ struct ModelData {
 struct TransformationMatrix {
 	Matrix4x4 WVP;
 	Matrix4x4 World;
+	Vector4 color;
+
 };
+
+struct Particle {
+	Transform transform;
+	Vector3 velocity;
+	Vector4 color;
+};
+
+struct ParticleForGPU
+{
+	Matrix4x4 WVP;
+	Matrix4x4 World;
+	Vector4 color;
+};
+
+Vector3& operator+=(Vector3& lhv, const Vector3& rhv) {
+	lhv.x += rhv.x;
+	lhv.y += rhv.y;
+	lhv.z += rhv.z;
+	return lhv;
+};
+
+Vector3& operator*=(Vector3& v, float s) {
+	v.x *= s;
+	v.y *= s;
+	v.z *= s;
+	return v;
+};
+
+const Vector3 operator*(const Vector3& v, float s) {
+	Vector3 temp(v);
+	return temp *= s;
+};
+
+//ランダム
+std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
+std::uniform_real_distribution<float> distColor(0.0f, 1.0f);
 
 // 単位行列
 Matrix4x4 MakeIdentity4x4() {
@@ -657,6 +701,20 @@ void UploadTextureData(ID3D12Resource* texture, const DirectX::ScratchImage& mip
 		);
 		assert(SUCCEEDED(hr));
 	}
+}
+
+Particle MakeNewParticle(std::mt19937& randomEngine)
+{
+	std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
+	Particle particle;
+	particle.transform.scale = {1.0f,1.0f,1.0f};
+	particle.transform.rotate = {0.0f,0.0f,0.0f};
+	particle.transform.translate = { distribution(randomEngine),distribution(randomEngine),distribution(randomEngine) };
+	particle.velocity = { distribution(randomEngine),distribution(randomEngine),distribution(randomEngine) };
+
+	particle.color = { distribution(randomEngine),distribution(randomEngine),distribution(randomEngine),1.0f };
+
+	return particle;
 }
 
 //Windoesアプリでのエントリーポイント(main関数)
@@ -1269,10 +1327,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	//インスタンシング
 	const uint32_t kNumInstance = 10;
 	//Microsoft::WRL::ComPtr<ID3D12Resource> instanceResource
-	ID3D12Resource* instanceResource =
-		CreateBufferResource(device, sizeof(TransformationMatrix) * kNumInstance);
+	Microsoft::WRL::ComPtr<ID3D12Resource> instancingResource = CreateBufferResource(device, sizeof(ParticleForGPU) * kNumInstance);
+	
 	TransformationMatrix* instancingData = nullptr;
-	instanceResource->Map(0, nullptr, reinterpret_cast<void**>(&instancingData));
+	instancingResource->Map(0, nullptr, reinterpret_cast<void**>(&instancingData));
 	for (uint32_t index = 0; index < kNumInstance; ++index) {
 		instancingData[index].WVP = MakeIdentity4x4();
 		instancingData[index].World = MakeIdentity4x4();
@@ -1291,18 +1349,27 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	instancingSrvDesc.Buffer.FirstElement = 0;
 	instancingSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
 	instancingSrvDesc.Buffer.NumElements = kNumInstance;
-	instancingSrvDesc.Buffer.StructureByteStride = sizeof(TransformationMatrix);
+	instancingSrvDesc.Buffer.StructureByteStride = sizeof(ParticleForGPU);
 	D3D12_CPU_DESCRIPTOR_HANDLE instancingSrvHandleCPU = GetCPUDescriptorHandle(srvDescriptorHeap,desriptorSizeSRV,3);
 	D3D12_GPU_DESCRIPTOR_HANDLE instancingSrvHandleGPU = GetGPUDescriptorHandle(srvDescriptorHeap, desriptorSizeSRV, 3);
-	device->CreateShaderResourceView(instanceResource/*.Get() */ , &instancingSrvDesc, instancingSrvHandleCPU);
-
+	device->CreateShaderResourceView(instancingResource.Get(), &instancingSrvDesc, instancingSrvHandleCPU);
+	
+	/*
 	Transform transforms[kNumInstance];
 	for (uint32_t index = 0; index < kNumInstance; ++index) {
 		transforms[index].scale = { 1.0f,1.0f,1.0f };
 		transforms[index].rotate = { 0.0f,0.0f,0.0f };
 		transforms[index].translate = { index * 0.1f,index * 0.1f, index * 0.1f };
 	}
+	*/
+	Particle particles[kNumInstance];
+	for (uint32_t index = 0; index < kNumInstance; ++index) {
+		particles[index] = MakeNewParticle(randomEngine);
+		instancingData[index].color = particles[index].color;
+	}
 
+	
+	const float kDeltaTime = 1.0f / 60.0f;
 
 	MSG msg{};
 	//ウィンドウのXボタンが押されるまでループ
@@ -1352,15 +1419,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 			*wvpData = worldviewProjectionMatrix;
 
+			
 			for (uint32_t index = 0; index < kNumInstance; ++index) {
 				Matrix4x4 worldMatrix = 
-					MakeAffineMatrix(transforms[index].scale, transforms[index].rotate, transforms[index].translate);
+					MakeAffineMatrix(particles[index].transform.scale, particles[index].transform.rotate, particles[index].transform.translate);
 				Matrix4x4 worldViewProjectionMatrix = 
 					Multiply(worldMatrix, viewProjectionMatrix);
 				instancingData[index].WVP = worldViewProjectionMatrix;
 				instancingData[index].World = worldMatrix;
-			}
 
+				particles[index].transform.translate += particles[index].velocity * kDeltaTime;
+
+			}
+			
+			
 			ImGui::Render();
 
 			//これから書き込むバックバッファのインデックスを取得
@@ -1511,7 +1583,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 	depthStencilResource->Release();
 
-	instanceResource->Release();
+	instancingResource->Release();
 	indexResourceSprite->Release();
 	vertexResourceSprite->Release();
 	transformationMatrixResourceSprite->Release();
