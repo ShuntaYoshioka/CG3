@@ -15,7 +15,7 @@ struct ParticleForGPU
 };
 
 //ConstantBuffer<TransformationMatrix> gTransformationMatrix : register(b0);
-StructuredBuffer<TransformationMatrix> gParticle : register(t0);
+StructuredBuffer<ParticleForGPU> gParticle : register(t0);
       
 struct VertexShaderInput
 {

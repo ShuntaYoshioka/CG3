@@ -1324,8 +1324,16 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 	indexDataSprite[5] = 2;
 
+
+
 	//インスタンシング
 	const uint32_t kNumInstance = 10;
+
+	Particle particles[kNumInstance];
+	for (uint32_t index = 0; index < kNumInstance; ++index) {
+		particles[index] = MakeNewParticle(randomEngine);
+	}
+
 	//Microsoft::WRL::ComPtr<ID3D12Resource> instanceResource
 	Microsoft::WRL::ComPtr<ID3D12Resource> instancingResource = CreateBufferResource(device, sizeof(ParticleForGPU) * kNumInstance);
 	
@@ -1334,6 +1342,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	for (uint32_t index = 0; index < kNumInstance; ++index) {
 		instancingData[index].WVP = MakeIdentity4x4();
 		instancingData[index].World = MakeIdentity4x4();
+		instancingData[index].color = particles[index].color;
 
 	}
 
@@ -1362,12 +1371,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		transforms[index].translate = { index * 0.1f,index * 0.1f, index * 0.1f };
 	}
 	*/
-	Particle particles[kNumInstance];
-	for (uint32_t index = 0; index < kNumInstance; ++index) {
-		particles[index] = MakeNewParticle(randomEngine);
-		instancingData[index].color = particles[index].color;
-	}
-
 	
 	const float kDeltaTime = 1.0f / 60.0f;
 
