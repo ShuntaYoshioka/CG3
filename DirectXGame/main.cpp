@@ -8,6 +8,7 @@
 #include <dxgidebug.h>
 #include <dxcapi.h>
 #include <random>
+#include <numbers>
 #include "externals/imgui/imgui.h"
 #include "externals/imgui/imgui_impl_dx12.h"
 #include "externals/imgui/imgui_impl_win32.h"
@@ -1172,14 +1173,23 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 	//ModelData modelData = LoadObjFile("resources", "fence.obj");
 
+	//球表示用
+	const uint32_t kSubdivision = 12;
+	const uint32_t kNumSphereVertices = kSubdivision * kSubdivision * 6;
+	float pi = std::numbers::pi_v<float>;
 
 	// 頂点リソースを作る
-	ID3D12Resource* vertexResource = CreateBufferResource(device, sizeof(VertexData) * modelData.vertices.size());
+	ID3D12Resource* vertexResource = CreateBufferResource(device, sizeof(VertexData) * kNumSphereVertices);// modelData.vertices.size()
+
 	// 頂点バッファビューを作成する
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView{};
-	vertexBufferView.BufferLocation = vertexResource->GetGPUVirtualAddress(); // リソースの先頭のアドレスから使う
-	vertexBufferView.SizeInBytes = UINT(sizeof(VertexData) * modelData.vertices.size()); // 使用するリソースのサイズは頂点のサイズ
-	vertexBufferView.StrideInBytes = sizeof(VertexData); // 1頂点あたりのサイズ
+	// リソースの先頭のアドレスから使う
+	vertexBufferView.BufferLocation = vertexResource->GetGPUVirtualAddress();
+	// 使用するリソースのサイズは頂点3つ分のサイズ
+	vertexBufferView.SizeInBytes = sizeof(VertexData) * kNumSphereVertices; 
+	//vertexBufferView.SizeInBytes = UINT(sizeof(VertexData) * modelData.vertices.size()); 
+	 // 1頂点あたりのサイズ
+	vertexBufferView.StrideInBytes = sizeof(VertexData);
 	// 頂点リソースにデータを書き込む
 	VertexData* vertexData = nullptr;
 	vertexResource->Map(0, nullptr, reinterpret_cast<void**>(&vertexData)); // 書き込むためのアドレスを取得
@@ -1246,6 +1256,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Texture2D.MipLevels = UINT(metadata.mipLevels);
 
+
 	//SRVを生成するDescriptorHeapの場所を決める	
 	D3D12_CPU_DESCRIPTOR_HANDLE textureSrvHandleCPU = srvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
 	D3D12_GPU_DESCRIPTOR_HANDLE textureSrvHandleGPU = srvDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
@@ -1281,6 +1292,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 	VertexData* vertexDataSprite = nullptr;
 	vertexResourceSprite->Map(0, nullptr, reinterpret_cast<void**>(&vertexDataSprite));
+
+
+
+	/*
 	//1枚目
 	vertexDataSprite[0].position = { 0.0f,360.0f,0.0f,1.0f };
 	vertexDataSprite[0].texcoord = { 0.0f,1.0f };
@@ -1290,7 +1305,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	vertexDataSprite[2].texcoord = { 1.0f,1.0f };
 	vertexDataSprite[3].position = { 640.0f,0.0f,0.0f,1.0f };
 	vertexDataSprite[3].texcoord = { 1.0f,0.0f };
-
+	*/
 
 	ID3D12Resource* transformationMatrixResourceSprite = CreateBufferResource(device, sizeof(Matrix4x4));
 
