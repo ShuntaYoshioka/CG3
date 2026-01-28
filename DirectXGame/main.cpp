@@ -284,6 +284,23 @@ Matrix4x4 MakeOrthographicMatrix(float left, float top, float right, float botto
 
 }
 
+float Dot(const Vector3& v1, const Vector3& v2) {
+	return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+}
+
+float Length(const Vector3& v) {
+	return std::sqrt(Dot(v, v));
+}
+
+//正規化
+Vector3 Normalize(const Vector3& v) {
+	float length = Length(v);
+	if (length == 0.0f) {
+		return v;
+	}
+	return { v.x / length,v.y / length,v.z / length };
+}
+
 void Log(const std::string& message) {
 	OutputDebugStringA(message.c_str());
 }
@@ -1002,7 +1019,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	D3D12_BLEND_DESC blendDesc{};
 	//すべての色要素を書き込む
 	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-	blendDesc.RenderTarget[0].BlendEnable = true;
+
 
 	//加算
 	blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
@@ -1420,6 +1437,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 			ImGui::Checkbox("UseMonsterBall", &useMonsterBall);
 			ImGui::ColorEdit4("material", &materialData->color.x, ImGuiColorEditFlags_AlphaPreview);
+			ImGui::DragFloat3("light", &directionalLightData->direction.x, 0.01f, -1.0f, 1.0f);
 			ImGui::DragFloat3("TextureScale", &transformSprite.scale.x, 0.1f);
 			ImGui::DragFloat3("TextureRotate", &transformSprite.rotate.x, 0.1f);
 			ImGui::DragFloat3("TextureTranslate", &transformSprite.translate.x, 0.5f);
@@ -1429,7 +1447,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 			ImGui::Render();
 
-			//directionalLightData->direction = Normalize(Vector3(-1.0f, -1.0f, -1.0f));
+			directionalLightData->direction = Normalize(Vector3(-1.0f, -1.0f, -1.0f));
 
 			//transform.rotate.y += 0.03f;
 			Matrix4x4 worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
