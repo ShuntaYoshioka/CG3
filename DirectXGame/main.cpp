@@ -71,6 +71,17 @@ struct Material {
 	int32_t enableLighting;
 };
 
+struct TransformationMatrix {
+	Matrix4x4 WVP;
+	Matrix4x4 World;
+};
+
+struct DirectionalLight {
+	Vector4 color;
+	Vector3 direction;
+	float intensity;
+};
+
 // 単位行列
 Matrix4x4 MakeIdentity4x4() {
 	Matrix4x4 identity;
@@ -916,7 +927,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	descriptorRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 	descriptorRange[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER rootParmeters[3]{};
+	D3D12_ROOT_PARAMETER rootParmeters[4]{};
 	rootParmeters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	rootParmeters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	rootParmeters[0].Descriptor.ShaderRegister = 0;
@@ -930,6 +941,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	rootParmeters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	rootParmeters[2].DescriptorTable.pDescriptorRanges = descriptorRange;
 	rootParmeters[2].DescriptorTable.NumDescriptorRanges = _countof(descriptorRange);
+
+	rootParmeters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParmeters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParmeters[3].Descriptor.ShaderRegister = 1;
 
 	descriptionRootSignature.pParameters = rootParmeters;
 	descriptionRootSignature.NumParameters = _countof(rootParmeters);
@@ -1196,11 +1211,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	materialData->enableLighting = true;
 
 	//WVP用リソース
-	ID3D12Resource* wvpResource = CreateBufferResource(device, sizeof(Matrix4x4));
+	ID3D12Resource* wvpResource = CreateBufferResource(device, sizeof(TransformationMatrix));
 	//データ書き込む
-	Matrix4x4* wvpData = nullptr;
+	TransformationMatrix* wvpData = nullptr;
 	wvpResource->Map(0, nullptr, reinterpret_cast<void**>(&wvpData));
-	*wvpData = MakeIdentity4x4();
+	wvpData->WVP = MakeIdentity4x4();
+	wvpData->World = MakeIdentity4x4();
 
 
 	//ビューボード
@@ -1319,13 +1335,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	vertexDataSprite[3].normal = { 0.0f,0.0f,-1.0f };
 
 
-	ID3D12Resource* transformationMatrixResourceSprite = CreateBufferResource(device, sizeof(Matrix4x4));
+	ID3D12Resource* transformationMatrixResourceSprite = CreateBufferResource(device, sizeof(TransformationMatrix));
 
-	Matrix4x4* transformationMatrixDataSprite = nullptr;
+	TransformationMatrix* transformationMatrixDataSprite = nullptr;
 
 	transformationMatrixResourceSprite->Map(0, nullptr, reinterpret_cast<void**>(&transformationMatrixDataSprite));
 
-	*transformationMatrixDataSprite = MakeIdentity4x4();
+	transformationMatrixDataSprite->WVP = MakeIdentity4x4();
+	transformationMatrixDataSprite->World = MakeIdentity4x4();
 
 	Transform transformSprite{ {1.0f,1.0f,1.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f} };
 
@@ -1368,6 +1385,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	materialDataSprite->color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 	materialDataSprite->enableLighting = false;
 
+	//ライト用
+	ID3D12Resource* directionalLightResource = CreateBufferResource(device, sizeof(DirectionalLight));
+	DirectionalLight* directionalLightData = nullptr;
+	directionalLightResource->Map(0, nullptr, reinterpret_cast<void**>(&directionalLightData));
+
+	directionalLightData->color = {1.0f,1.0f,1.0f,1.0f};
+	directionalLightData->direction = {0.0f,-1.0f,0.0f};
+	directionalLightData->intensity = 1.0f;
+
 	//ウィンドウのXボタンが押されるまでループ
 	while (msg.message != WM_QUIT) {
 		//Windowにメッセージが来てたら最優先で処理させる
@@ -1381,8 +1407,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			Matrix4x4 viewMatrixSprite = MakeIdentity4x4();
 
 			Matrix4x4 projectionMatrixSprite = MakeOrthographicMatrix(0.0f, 0.0f, float(kClientWidth), float(kClientHeight), 0.0f, 100.0f); Matrix4x4 worldViewProjectionMatrixSprite = Multiply(worldMatrixSprite, Multiply(viewMatrixSprite, projectionMatrixSprite));
-
-			*transformationMatrixDataSprite = worldViewProjectionMatrixSprite;
 
 			//ゲームの処理
 			ImGui_ImplDX12_NewFrame();
@@ -1405,9 +1429,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 			ImGui::Render();
 
+			//directionalLightData->direction = Normalize(Vector3(-1.0f, -1.0f, -1.0f));
+
 			//transform.rotate.y += 0.03f;
 			Matrix4x4 worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
-			*wvpData = worldMatrix;
 
 			Matrix4x4 cameraMatrix = MakeAffineMatrix(cameraTransform.scale, cameraTransform.rotate, cameraTransform.translate);
 			Matrix4x4 viewMatrix = Inverse(cameraMatrix);
@@ -1415,7 +1440,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			Matrix4x4 worldviewProjectionMatrix = Multiply(worldMatrix, Multiply(viewMatrix, projectionMatrix));
 			Multiply(worldMatrix, Multiply(viewMatrix, projectionMatrix));
 
-			*wvpData = worldviewProjectionMatrix;
+			wvpData->WVP = worldviewProjectionMatrix;
+			wvpData->World = worldMatrix;
+
+
+			transformationMatrixDataSprite->WVP = worldViewProjectionMatrixSprite;
+
+			transformationMatrixDataSprite->World = worldMatrix;
 
 			//これから書き込むバックバッファのインデックスを取得
 			UINT backBufferIndex = swapChain->GetCurrentBackBufferIndex();
@@ -1471,6 +1502,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			commandList->SetGraphicsRootConstantBufferView(1, wvpResource->GetGPUVirtualAddress());
 
 			commandList->SetGraphicsRootDescriptorTable(2, useMonsterBall ?  textureSrvHandleGPU2 : textureSrvHandleGPU);
+
+			commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
 
 			//commandList->DrawInstanced(6, 1, 0, 0);
 			//モデル描画
@@ -1570,6 +1603,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	ImGui_ImplDX12_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
+
+	directionalLightResource->Release();
 
 
 	CoUninitialize();
