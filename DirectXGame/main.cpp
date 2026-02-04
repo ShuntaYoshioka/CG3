@@ -69,6 +69,7 @@ struct ModelData {
 struct Material {
 	Vector4 color;
 	int32_t enableLighting;
+	float shininess;
 };
 
 struct TransformationMatrix {
@@ -80,6 +81,10 @@ struct DirectionalLight {
 	Vector4 color;
 	Vector3 direction;
 	float intensity;
+};
+
+struct CameraForGPU {
+	Vector3 worldPosition;
 };
 
 // 単位行列
@@ -944,7 +949,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	descriptorRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 	descriptorRange[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER rootParmeters[4]{};
+	D3D12_ROOT_PARAMETER rootParmeters[5]{};
 	rootParmeters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	rootParmeters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	rootParmeters[0].Descriptor.ShaderRegister = 0;
@@ -962,6 +967,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	rootParmeters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	rootParmeters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	rootParmeters[3].Descriptor.ShaderRegister = 1;
+
+	rootParmeters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParmeters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParmeters[4].Descriptor.ShaderRegister = 2;
 
 	descriptionRootSignature.pParameters = rootParmeters;
 	descriptionRootSignature.NumParameters = _countof(rootParmeters);
@@ -1226,6 +1235,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	materialResource->Map(0, nullptr, reinterpret_cast<void**>(&materialData));
 	materialData->color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 	materialData->enableLighting = true;
+	materialData->shininess = 70.0f;
 
 	//WVP用リソース
 	ID3D12Resource* wvpResource = CreateBufferResource(device, sizeof(TransformationMatrix));
@@ -1411,6 +1421,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	directionalLightData->direction = { 0.0f,-1.0f,0.0f };
 	directionalLightData->intensity = 1.0f;
 
+	//カメラリソース
+	ID3D12Resource* cameraResource = CreateBufferResource(device, sizeof(CameraForGPU));
+	CameraForGPU* cameraData = nullptr;
+	cameraResource->Map(0, nullptr, reinterpret_cast<void**>(&cameraData));
+	cameraData->worldPosition = { 0.0f,1.0f,-10.0f };
+
 	//ウィンドウのXボタンが押されるまでループ
 	while (msg.message != WM_QUIT) {
 		//Windowにメッセージが来てたら最優先で処理させる
@@ -1448,6 +1464,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			ImGui::Render();
 
 			directionalLightData->direction = Normalize(directionalLightData->direction);
+
+
 
 			//transform.rotate.y += 0.03f;
 			Matrix4x4 worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
@@ -1523,6 +1541,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 			commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
 
+			commandList->SetGraphicsRootConstantBufferView(4, cameraResource->GetGPUVirtualAddress());
+
 			//commandList->DrawInstanced(6, 1, 0, 0);
 			//モデル描画
 			commandList->DrawInstanced(kNumSphereVertices, 1, 0, 0);
@@ -1596,6 +1616,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	dxgiFactory->Release();
 	dsvDescriptorHeap->Release();
 	textureResource2->Release();
+	cameraResource->Release();
 
 	indexResourceSprite->Release();
 	vertexResource->Release();
